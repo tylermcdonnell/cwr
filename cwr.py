@@ -30,6 +30,8 @@ class CWR(QtGui.QWidget):
         content  = requests.get(test_url).text        
         content
         test_text = BeautifulSoup(content, "html.parser").get_text()
+        
+        self._text = test_text
       
         grid = QtGui.QGridLayout()
         grid.setSpacing(10)
@@ -63,9 +65,14 @@ class CWR(QtGui.QWidget):
         grid.addLayout(rationale_view, 0, 2)
         
         # Rationale Display
-        self._rationale_display = HighlightBox()
+        web = HighlightWebView()
+        web.setSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Expanding)
+        web.load(QUrl('https://en.wikipedia.org/wiki/The_Beatles'))
+        web.show()
+        self._rationale_display = web
+        #self._rationale_display = HighlightBox()
         rationale_view.addWidget(self._rationale_display, 2, 0)
-        self._rationale_display.set_text(test_text)
+        #self._rationale_display.set_text(test_text)
         
         # Rationale Selection
         selection_view = QtGui.QGroupBox("Selection")
@@ -114,6 +121,7 @@ class CWR(QtGui.QWidget):
             r = rationales[i]
             c = colors[min(i, len(colors) - 1)]
             d = QCheckBox(r.label)
+            d.stateChanged.connect(self.rationale_selection_changed)
             self._rationales.append(container(rationale = r, color = c, display = d))
             self._selection_layout.addWidget(d)
 
@@ -122,22 +130,33 @@ class CWR(QtGui.QWidget):
         Handler function called when a user selects or deselects a rationale
         check box. Inititates an expensive rationale overlap computation.
         '''
+        self._rationale_display.show_html()
+        
         # Locate selected rationales.
         selected = []
-        for box in self._rationale_boxes:
-            if box.isChecked:
-                selected.extend([r for r in self._rationales if box.text == r.label])
-
+        for this_rationale in self._rationales:
+            if this_rationale.display.isChecked():
+                selected.extend([r for r in self._rationales if this_rationale.display.text() == r.rationale.label])
+                
         # Compute overlap.
-        result = Rationale.compute_overlap(self._text, selected)
+        just_rationales = [r.rationale for r in selected]
+        result = Rationale.compute_overlap(self._text, just_rationales)
 
-        # Update display.
-        for match in result.matches:
-            # Highlight with assigned color for rationale.
-            pass
-        for overlap in result.matches:
-            # Highlight with overlap color.
-            pass
+        # Update display with rationale matches.
+        display = self._rationale_display
+        display.clear()
+        for rationale, matches in result.matches.items():
+            # Map back to container to find correct color.
+            color = [c.color for c in selected if c.rationale is rationale][0]
+            
+            # Highlight in display.
+            for match in matches:
+                display.highlight(match, color)
+            
+        # Update display with overlap between rationales.
+        overlap_color = QtGui.QColor(255, 255, 102) # Light Yellow
+        for string in result.overlap:
+            display.highlight(string, overlap_color)
     
     def update_topic_list(self, topics):
         '''
@@ -182,8 +201,8 @@ class Rationale(object):
     '''
 
     def __init__(self, label, rationale):
-        self.label     = label
-        self.rationale = rationale
+        self.label = label
+        self.text  = rationale
 
     @staticmethod
     def compute_overlap(text, rationales):
@@ -199,9 +218,8 @@ class Rationale(object):
         
         Returns namedtuple with fields:
         
-        matches -- Dictionary of key-[string] pairs, where the list of strings 
-                   for a key are substrings found between the string provided 
-                   for that key and the source text.
+        matches -- Dictionary of rationale-[string] pairs, where the list of strings 
+                   mapped to a rationale are substrings found in the text.
         overlap -- List of strings that are common to two or more rationales.
         '''
         result = namedtuple('RationaleComputation', ['matches', 'overlap'])
@@ -209,18 +227,20 @@ class Rationale(object):
         # Compute matches
         matches  = defaultdict(list)
         for rationale in rationales:
-            for match in SequenceMatcher(None, text, rationale).get_matching_blocks():
+            for match in SequenceMatcher(None, text, rationale.text).get_matching_blocks():
                 start  = match[0]
                 length = match[2]
-                matches.append({ key : text[start : start + length] })
+                matches[rationale].append(text[start : start + length])
                 
         # Compute overlap in rationales.
         overlap = []
         for pair in itertools.combinations(rationales, 2):
-            for match in SequenceMatcher(None, pair[0], pair[1]).get_matching_blocks():
+            string1 = pair[0].text
+            string2 = pair[1].text
+            for match in SequenceMatcher(None, string1, string2).get_matching_blocks():
                 start  = match[0]
                 length = match[2]
-                overlap.append(pair[0][start : start + length])
+                overlap.append(string1[start : start + length])
                 
         return result(matches = matches, overlap = overlap)
                  
@@ -244,6 +264,24 @@ class HighlightWebView(QtWebKit.QWebView, HighlightInterface):
     '''
     A special viewer for web URLs which provides highlight functionality.
     '''
+    
+    def __init__(self, parent=None):
+        super(HighlightWebView, self).__init__(parent)
+        
+        # The raw display text.
+        self._text = None
+        
+    def show_html(self):
+        html = BeautifulSoup(self.page().mainFrame().toHtml(), "html.parser")
+        print (html.encode('utf-8'))
+        print (html.get_text().encode('utf-8'))
+
+    def load(self, URL):
+        '''
+        Loads the specified URL and stores its text for computations.
+        '''
+        super(HighlightWebView, self).load(URL)
+        print (self.page().mainFrame().toHtml())
 
     def highlight(self, string, color):
         '''
@@ -301,8 +339,6 @@ class HighlightBox(QtGui.QTextEdit, HighlightInterface):
         Clears all highlights.
         '''
         self._highlight(0, len(self._text), QtGui.QColor("white"))
-        
-
 
         
 if __name__ == "__main__":
