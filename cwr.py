@@ -85,30 +85,87 @@ class CWR(QtGui.QWidget):
         self.setGeometry(300, 300, 1000, 1000)
         self.setWindowTitle("The Crowdworker's Rationale")
         self.show()
+
+    def load_rationales(self, rationales):
+        '''
+        Regenerates data structures and display logic for rationale selection.
+        '''
+        # Compact holder for all rationale logic.
+        rationale_container = namedtuple('RationaleContainer', ['rationale', 'color', 'display']
+
+        # Friendly display colors used to highlight rationales in source texts.
+        friendly_colors = []
+
+        # Re-generate rationale data structures.
+        for r in rationales:
+            self._rationales.append(rationale_container(rational = r, color = None, display = QCheckBox(r.label)))
     
-    def generate_rationale_selection(self, rationales):
+    def generate_rationale_selection(self, labels, func):
+        '''
+        Generates and displays rationale checkbox for each provided label.
+
+        Arguments:
+
+        labels -- list of labels, each one of which will map to a checkbox
+        func   -- function that should be called when a checkbox is selected
+        '''
         colors = [QtGui.QColor("yellow"),
                   QtGui.QColor("cyan"),
                   QtGui.QColor("green")]
-        self._rationales = rationales
-        for i in range(len(rationales)):
-            newCheckBox = RationaleCheckBox('R%d' % (i), self._rationales[i], self._rationale_display, colors[i])
-            self._selection_layout.addWidget(newCheckBox)
+        self._rationale_boxes = []
+        for label in labels:
+            new_box = QCheckBox(label)
+            self._rationale_boxes.append(new_box)
+            self._selection_layout.addWidget(new_box)
+
+    def rationale_selection_changed(self, state):
+        '''
+        Handler function called when a user selects or deselects a rationale
+        check box. Inititates an expensive rationale overlap computation.
+        '''
+        # Locate selected rationales.
+        selected = []
+        for box in self._rationale_boxes:
+            if box.isChecked:
+                selected.extend([r for r in self._rationales if box.text == r.label])
+
+        # Compute overlap.
+        result = Rationale.compute_overlap(self._text, selected)
+
+        # Update display.
+        for match in result.matches:
+            # Highlight with assigned color for rationale.
+        for overlap in result.matches:
+            # Highlight with overlap color.
     
     def update_topic_list(self, topics):
+        '''
+        Updates the topics displayed in Topic View.
+        '''
         self._topic_list.clear()
         self._topic_list.addItems(topics)
         self._topic_list.sortItems()   
         
     def update_document_list(self, documents):
+        '''
+        Updates the documents displayed in Document View.
+        '''
         self._document_list.clear()
         self._document_list.addItems(documents)
         self._document_list.sortItems() 
         
     def topic_selected(self, item):
+        '''
+        Handler function called when a user selects a topic in the
+        Topic View.
+        '''
         print (item.text())
         
     def document_selected(self, item):
+        '''
+        Handler function called when a user select a doicment in the
+        Document View.
+        '''
         print (item.text())
         
     def update_rationale_text(self, text):
@@ -116,52 +173,19 @@ class CWR(QtGui.QWidget):
     
     def highlight_rationale(self, text):
         self._rationale_display.highlight(text)
-        
-class RationaleCheckBox(QtGui.QCheckBox):
-    '''
-    A GUI check box made to hook up to a MyHighlightBox. Automatically
-    highlights a portion of text upon selection.
-    '''
-    def __init__(self, label, rationale, highlight_box, color):
-        super(QtGui.QCheckBox, self).__init__(label)
-        
-        self._label           = label
-        self._rationale       = rationale
-        self._highlight_box   = highlight_box
-        self._highlight_color = color
-        self.stateChanged.connect(self._selection_changed)
-        
-    def on_selection_changed(self, func):
-        self._on_selection_changed = func
-        
-    def _selection_changed(self, state):
-        if state:
-            self._highlight_box.highlight(self._label, self._rationale) 
-        else:
-            self._highlight_box.highlight(self._label, "") # Clear
-
-class RationaleSimilarityCalculator(object):
+    
+class Rationale(object):
     '''
     Provides various utilities for analyzing similarity of rationales
     with respect to each and a source text.
     '''
-    
-    def __init__(self):
-        self._rationales = {}
 
-    def add_rationale(self, key, string):
-        '''
-        Stores the key-rationale tuple for processing.
-        '''
-        self._rationales.update({ key : string })
-    
-    def remove_rationale(self, key):
-        '''
-        Removes the rationale and excludes it from further processing.
-        '''
-        self._rationales.pop(key, None)     
-    
-    def compute_overlap(self):
+    def __init__(self, label, rationale):
+        self.label     = label
+        self.rationale = rationale
+
+    @staticmethod
+    def compute_overlap(text, rationales):
         '''
         Stores the key-string tuple and, for every tuple stored, computes the 
         overlap of the string with the source text. Additionally, separately
@@ -169,10 +193,8 @@ class RationaleSimilarityCalculator(object):
         
         Arguments:
         
-        key    -- A key used to map the (string) tuple. If highlight is
-                  called with a key that is already stored, it this updates 
-                  the previous (string) tuple and recomputes overlap.
-        string -- String which should be compared with source text.
+        text       -- Source text to compare rationales against.
+        rationales -- Rationales to use for computation. 
         
         Returns namedtuple with fields:
         
@@ -181,32 +203,32 @@ class RationaleSimilarityCalculator(object):
                    for that key and the source text.
         overlap -- List of strings that are common to two or more rationales.
         '''
-        computation = namedtuple('RationaleComputation', ['matches', 'overlap'])
+        result = namedtuple('RationaleComputation', ['matches', 'overlap'])
         
         # Compute matches
         matches  = defaultdict(list)
-        for key, rationale in self._rationales.items():
-            for match in SequenceMatcher(None, self._text, rationale).get_matching_blocks():
+        for rationale in rationales:
+            for match in SequenceMatcher(None, text, rationale).get_matching_blocks():
                 start  = match[0]
                 length = match[2]
-                matches.append({ key : self._text[start : start + length] })
+                matches.append({ key : text[start : start + length] })
                 
         # Compute overlap in rationales.
         overlap = []
-        for pair in itertools.combinations(self._rationales.values(), 2):
+        for pair in itertools.combinations(rationales, 2):
             for match in SequenceMatcher(None, pair[0], pair[1]).get_matching_blocks():
                 start  = match[0]
                 length = match[2]
                 overlap.append(pair[0][start : start + length])
                 
-        return computation(matches = matches, overlap = overlap)
+        return result(matches = matches, overlap = overlap)
                  
 class HighlightInterface(metaclass=ABCMeta):
     '''
     '''
     
     @abstractmethod
-    def highlight(self):
+    def highlight(self, text, color):
         '''
         '''
         pass
@@ -219,20 +241,22 @@ class HighlightInterface(metaclass=ABCMeta):
     
 class HighlightWebView(QtWebKit.QWebView, HighlightInterface):
     '''
-    A special viewer for web URLs which provides key-mapped highlights.
+    A special viewer for web URLs which provides highlight functionality.
     '''
-        
+
+    def highlight(self, text, color):
+        '''
+        '''
+        pass
+
+    def clear(self):
+        '''
+        '''
+        pass
+    
 class HighlightBox(QtGui.QTextEdit, HighlightInterface):
     '''
-    A special text display which provides key-mapped highlights. That is, it provides
-    general purpose highlight and remove methods which take strings and keys. The 
-    behavior of the box is as follows: upon a call to highlight, each string from a 
-    key-string pair submitted through highlight that overlaps with the display text
-    will be highlighted with the specified color. Any strings in the display text
-    which are highlighted by more than one key-string pair are highlighted by the
-    reserved, specified overlap color.
-    
-    Note: For now, this only supports X key-string pairs, due to readability issues.
+    A special text viewer which provides highlight functionality.
     '''
     def __init__(self, parent=None):
         super(HighlightBox, self).__init__(parent)
@@ -240,69 +264,10 @@ class HighlightBox(QtGui.QTextEdit, HighlightInterface):
         # Setup the text editor
         self.format = QtGui.QTextCharFormat()
         
-        # The color used to for overlapping strings in display text.
-        self._overlap_color = QtGui.QColor("yellow")
-        
         # The raw display text.
         self._text = None
         self.set_text("Select a topic and document to view.")
-        
-        # Key-string pairs highlighted in display text.
-        self._strings = {}
 
-    def set_text(self, text):
-        self._text = text
-        self.setText(text)
-        
-    def set_overlap_color(self, color):
-        self._overlap_color = color
-    
-    def highlight(self, key, string):
-        '''
-        The heavy lifting. Stores the key-string pair and recomputes highlights. 
-        This finds all matching substrings with the display text for all key-string
-        pairs and highlights them in the display text. Substrings common to two or
-        more key-string pairs are highlighted with the special overlap color.
-        '''
-        # Easy-to-read.
-        friendly_colors = [QtGui.QColor("cyan"), QtGui.QColor("orange"), QtGui.QColor("green")]
-        
-        # Add new key-string to active collection.
-        self._strings.update({ key : string })
-        
-        # Compute overlapping substrings.
-        overlaps = []
-        count    = 0
-        for pair in itertools.combinations(self._strings.values(), 2):
-            for match in SequenceMatcher(None, pair[0], pair[1]).get_matching_blocks():
-                start  = match[0]
-                length = match[2]
-                overlaps.append(pair[0][start : start + length])
-                self._highlight(start, length, friendly_colors[count])
-            count += 1
-                
-        # Update display text with highlight strings and then overlaps.
-        self.clear()
-        i = 0
-        for string in self._strings.values():
-            for match in SequenceMatcher(None, self._text, string).get_matching_blocks():
-                start  = match[0]
-                length = match[2]
-                self._highlight(start, length, QtGui.QColor(friendly_colors[i]))
-            i = min([len(friendly_colors), i + 1])
-        for string in overlaps:
-            for match in SequenceMatcher(None, self._text, string).get_matching_blocks():
-                start  = match[0]
-                length = match[2]
-                self._highlight(start, length, QtGui.QColor(self._overlap_color))
-        
-            
-    def clear(self):
-        '''
-        Clears all highlights.
-        '''
-        self._highlight(0, len(self._text), QtGui.QColor("white"))
-        
     def _set_color(self, color):
         self.format.setBackground(QtGui.QBrush(color))
         
@@ -312,7 +277,33 @@ class HighlightBox(QtGui.QTextEdit, HighlightInterface):
         cursor.setPosition(start)
         cursor.movePosition(QtGui.QTextCursor.Right, 1, n = length)
         cursor.mergeCharFormat(self.format)
+        
+    def set_text(self, text):
+        self._text = text
+        self.setText(text)
+    
+    def highlight(self, string, color):
+        '''
+        Highlights specified text in display.
 
+        Arguments:
+
+        color -- QColor used for highlighting.
+        '''
+        for match in SequenceMatcher(None, self._text, string).get_matching_blocks():
+            start  = match[0]
+            length = match[2]
+            self._highlight(start, length, color)
+            
+    def clear(self):
+        '''
+        Clears all highlights.
+        '''
+        self._highlight(0, len(self._text), QtGui.QColor("white"))
+        
+
+
+        
 if __name__ == "__main__":
     import sys
     a = QtGui.QApplication(sys.argv)
