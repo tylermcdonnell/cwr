@@ -1,6 +1,7 @@
 import itertools
 import requests
-
+import queue
+from threading import Thread
 from bs4 import BeautifulSoup
 from difflib import SequenceMatcher
 from abc import abstractmethod
@@ -128,9 +129,20 @@ class CWR(QtGui.QWidget):
     def rationale_selection_changed(self, state):
         '''
         Handler function called when a user selects or deselects a rationale
-        check box. Inititates an expensive rationale overlap computation.
+        check box.
         '''
-        self._rationale_display.show_html()
+        worker = Thread(target=self._update_rationale_display)
+        worker.start()    
+        
+    def _update_rationale_display(self):
+        '''
+        Recomputes rationale overlap and updates display. Expensive.
+        '''
+        print ("Updating rationale display...")
+        
+        # Disable rationale selection while updating.
+        for this_rationale in self._rationales:
+            this_rationale.display.setEnabled(False)
         
         # Locate selected rationales.
         selected = []
@@ -157,6 +169,12 @@ class CWR(QtGui.QWidget):
         overlap_color = QtGui.QColor(255, 255, 102) # Light Yellow
         for string in result.overlap:
             display.highlight(string, overlap_color)
+
+        # Re-enable rationale selection.
+        for this_rationale in self._rationales:
+            this_rationale.display.setEnabled(True)
+
+        print ("Finished updating rationale display.")
     
     def update_topic_list(self, topics):
         '''
