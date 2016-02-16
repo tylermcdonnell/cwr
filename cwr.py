@@ -1,11 +1,12 @@
 import itertools
 import requests
-import queue
+
 from threading import Thread
 from bs4 import BeautifulSoup
 from difflib import SequenceMatcher
 from abc import abstractmethod
 from collections import namedtuple, defaultdict
+from highlightinterface import HighlightWebView, HighlightBox
 
 from PyQt4 import QtGui
 from PyQt4 import QtWebKit
@@ -17,23 +18,31 @@ class CWR(QtGui.QWidget):
     
     def __init__(self):
         super(CWR, self).__init__()
-        
-        self.init_UI()
-        
-    def init_UI(self):
 
-        test_rationales = { '0000001' : "The Beatles were an English rock band, formed in Liverpool in 1960. With members John Lennon, Paul McCartney, George Harrison and Ringo Starr, they became widely regarded as the foremost and most influential act of the rock era.", 
-                            '0000002' : "The Beatles were an English rock band, formed in Liverpool in 1960 they came to be perceived as an embodiment of the ideals shared by the counterculture of the 1960s",
-                            '0000003' : "The Beatles were an English rock band The Beatles built their reputation playing clubs in Liverpool and Hamburg over a three-year period from 1960" }
-        #test_text = "The Beatles were an English rock band, formed in Liverpool in 1960. With members John Lennon, Paul McCartney, George Harrison and Ringo Starr, they became widely regarded as the foremost and most influential act of the rock era.[1] Rooted in skiffle, beat, and 1950s rock and roll, the Beatles later experimented with several genres, ranging from pop ballads and Indian music to psychedelia and hard rock, often incorporating classical elements in innovative ways. In the early 1960s, their enormous popularity first emerged as Beatlemania, but as the group's music grew in sophistication, led by primary songwriters Lennon and McCartney, they came to be perceived as an embodiment of the ideals shared by the counterculture of the 1960s. The Beatles built their reputation playing clubs in Liverpool and Hamburg over a three-year period from 1960, with Stuart Sutcliffe initially serving as bass player. The core of Lennon, McCartney and Harrison went through a succession of drummers, most notably Pete Best, before asking Starr to join them. Manager Brian Epstein moulded them into a professional act and producer George Martin enhanced their musical potential. They gained popularity in the United Kingdom after their first hit, Love Me Do, in late 1962. They acquired the nickname the Fab Four as Beatlemania grew in Britain over the following year, and by early 1964 they had become international stars, leading the British Invasion of the United States pop market. From 1965 onwards, the Beatles produced what many consider their finest material, including the innovative and widely influential albums Rubber Soul (1965), Revolver (1966), Sgt. Pepper's Lonely Hearts Club Band (1967), The Beatles (commonly known as the White Album, 1968) and Abbey Road (1969). After their break-up in 1970, they each enjoyed successful musical careers of varying lengths. McCartney and Starr, the surviving members, remain musically active. Lennon was shot and killed in December 1980, and Harrison died of lung cancer in November 2001. According to the RIAA, the Beatles are the best-selling music artists in the United States, with 178 million certified units. They have had more number-one albums on the British charts and sold more singles in the UK than any other act. In 2008, the group topped Billboard magazine's list of the all-time most successful Hot 100 artists; as of 2015, they hold the record for most number-one hits on the Hot 100 chart with twenty. They have received ten Grammy Awards, an Academy Award for Best Original Song Score and fifteen Ivor Novello Awards. Collectively included in Time magazine's compilation of the twentieth century's 100 most influential people, they are the best-selling band in history, with estimated sales of over 600 million records worldwide.[2][3] The group was inducted into the Rock and Roll Hall of Fame in 1988, with all four being inducted individually as well from 1994 to 2015."
+        # Primary data structures.
+        self._model = CWRData()        # Primary data model.
 
+        self._topics = []              # All topics for which judgments have been loaded.
+        self._documents = []           # Documents for which we have a judgment for the
+                                       # currently selected topic.
+
+        self._selected_topic = None    # Currently selected topic.
+        self._selected_document = None # Currently selected document.
+
+        self._display_text = None      # Text of document being manipulated.
+
+        # For testing WebView.
+        ''' 
         test_url = 'https://en.wikipedia.org/wiki/The_Beatles'
         content  = requests.get(test_url).text        
         content
         test_text = BeautifulSoup(content, "html.parser").get_text()
+        self._display_text = test_text
+        '''
         
-        self._text = test_text
-      
+        self.init_UI()
+        
+    def init_UI(self):        
         grid = QtGui.QGridLayout()
         grid.setSpacing(10)
             
@@ -262,101 +271,7 @@ class Rationale(object):
                 
         return result(matches = matches, overlap = overlap)
                  
-class HighlightInterface(object):
-    '''
-    '''
-    
-    @abstractmethod
-    def highlight(self, string, color):
-        '''
-        '''
-        pass
-    
-    @abstractmethod
-    def clear(self):
-        '''
-        '''
-        pass    
-    
-class HighlightWebView(QtWebKit.QWebView, HighlightInterface):
-    '''
-    A special viewer for web URLs which provides highlight functionality.
-    '''
-    
-    def __init__(self, parent=None):
-        super(HighlightWebView, self).__init__(parent)
-        
-        # The raw display text.
-        self._text = None
-        
-    def show_html(self):
-        html = BeautifulSoup(self.page().mainFrame().toHtml(), "html.parser")
-        print (html.encode('utf-8'))
-        print (html.get_text().encode('utf-8'))
 
-    def load(self, URL):
-        '''
-        Loads the specified URL and stores its text for computations.
-        '''
-        super(HighlightWebView, self).load(URL)
-        print (self.page().mainFrame().toHtml())
-
-    def highlight(self, string, color):
-        '''
-        '''
-        pass
-
-    def clear(self):
-        '''
-        '''
-        pass
-    
-class HighlightBox(QtGui.QTextEdit, HighlightInterface):
-    '''
-    A special text viewer which provides highlight functionality.
-    '''
-    def __init__(self, parent=None):
-        super(HighlightBox, self).__init__(parent)
-        
-        # Setup the text editor
-        self.format = QtGui.QTextCharFormat()
-        
-        # The raw display text.
-        self._text = None
-        self.set_text("Select a topic and document to view.")
-
-    def _set_color(self, color):
-        self.format.setBackground(QtGui.QBrush(color))
-        
-    def _highlight(self, start, length, color):
-        self._set_color(color)
-        cursor = self.textCursor()
-        cursor.setPosition(start)
-        cursor.movePosition(QtGui.QTextCursor.Right, 1, n = length)
-        cursor.mergeCharFormat(self.format)
-        
-    def set_text(self, text):
-        self._text = text
-        self.setText(text)
-    
-    def highlight(self, string, color):
-        '''
-        Highlights specified text in display.
-
-        Arguments:
-
-        color -- QColor used for highlighting.
-        '''
-        for match in SequenceMatcher(None, self._text, string).get_matching_blocks():
-            start  = match[0]
-            length = match[2]
-            self._highlight(start, length, color)
-            
-    def clear(self):
-        '''
-        Clears all highlights.
-        '''
-        self._highlight(0, len(self._text), QtGui.QColor("white"))
 
         
 if __name__ == "__main__":
