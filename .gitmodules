@@ -1,0 +1,3 @@
+[submodule "test_collection"]
+	path = test_collection
+	url = https://github.com/tylermcdonnell/ir_utility.git

@@ -1,6 +1,8 @@
 import itertools
 import requests
 
+from datamodel import DataModel
+
 from threading import Thread
 from bs4 import BeautifulSoup
 from difflib import SequenceMatcher
@@ -12,24 +14,22 @@ from PyQt4 import QtGui
 from PyQt4 import QtWebKit
 from PyQt4.Qt import QUrl, QCheckBox
 
-
-
 class CWR(QtGui.QWidget):
     
     def __init__(self):
         super(CWR, self).__init__()
 
-        # Primary data structures.
-        self._model = CWRData()        # Primary data model.
+        self._dm = DataModel()              # Primary data model.
 
-        self._topics = []              # All topics for which judgments have been loaded.
-        self._documents = []           # Documents for which we have a judgment for the
-                                       # currently selected topic.
+        self._topics    = []                # All topics for which judgments have been loaded.
+        self._documents = []                # Documents for which we have a judgment for the
+                                            # currently selected topic.
 
-        self._selected_topic = None    # Currently selected topic.
-        self._selected_document = None # Currently selected document.
+        self._selected_topic    = None      # Currently selected topic.
+        self._selected_document = None      # Currently selected document.
+        self._rationales        = None      # Rationales for the currently selected document.
 
-        self._display_text = None      # Text of document being manipulated.
+        self._display_text = None           # Text of document being manipulated.
 
         # For testing WebView.
         ''' 
@@ -46,31 +46,40 @@ class CWR(QtGui.QWidget):
         grid = QtGui.QGridLayout()
         grid.setSpacing(10)
             
-        # Topic View - contains topic list.
+        #####################################
+        # Topic View                        #
+        #####################################
+        # Contains Topic List.
         topic_view = QtGui.QGroupBox("Topics")
         topic_layout = QtGui.QVBoxLayout()
         topic_view.setLayout(topic_layout)
         grid.addWidget(topic_view, 0, 0)
-        
+
         # Topic List
         self._topic_list = QtGui.QListWidget()
         self._topic_list.setSizePolicy(QtGui.QSizePolicy.Minimum, QtGui.QSizePolicy.Minimum)
         self._topic_list.itemClicked.connect(self.topic_selected)
         topic_layout.addWidget(self._topic_list)
         
-        # Document View - contains document list.
+        #####################################
+        # Document View                     #
+        #####################################
+        # Contains Document List.
         document_view = QtGui.QGroupBox("Documents")
         document_layout = QtGui.QVBoxLayout()
         document_view.setLayout(document_layout)
         grid.addWidget(document_view, 0, 1)
-        
+
         # Document List
         self._document_list = QtGui.QListWidget()
         self._document_list.setSizePolicy(QtGui.QSizePolicy.Minimum, QtGui.QSizePolicy.Minimum)
-        self._document_list.itemClicked.connect(self.document_selected)
+        self._document_list.itemClicked.connect(self._document_selected)
         document_layout.addWidget(self._document_list)
         
-        # Rationale View - Contains the rationale check boxes, text display, and statistics.
+        #####################################
+        # Rationale View                    #
+        #####################################
+        # Contains the rationale check boxes, text display, and statistics.
         rationale_view = QtGui.QGridLayout()
         grid.addLayout(rationale_view, 0, 2)
         
@@ -103,12 +112,15 @@ class CWR(QtGui.QWidget):
         self._stat_display.setLayout(stat_layout)
         rationale_view.addWidget(self._stat_display, 3, 0)
         
+        #####################################
+        # Main Application Properties       #
+        #####################################
         self.setLayout(grid)
         self.setGeometry(300, 300, 1000, 1000)
         self.setWindowTitle("The Crowdworker's Rationale")
         self.show()
 
-    def load_rationales(self, rationales):
+    def _load_rationales(self, rationales):
         '''
         Regenerates data structures and display logic for rationale selection.
         '''
@@ -131,18 +143,30 @@ class CWR(QtGui.QWidget):
             r = rationales[i]
             c = colors[min(i, len(colors) - 1)]
             d = QCheckBox(r.label)
-            d.stateChanged.connect(self.rationale_selection_changed)
+            d.stateChanged.connect(self._rationale_selection_changed)
             self._rationales.append(container(rationale = r, color = c, display = d))
             self._selection_layout.addWidget(d)
 
-    def rationale_selection_changed(self, state):
+#########################################################################################
+# Updateable UI Elements                                                                #
+#########################################################################################
+
+    def update_topic_list(self, topics):
         '''
-        Handler function called when a user selects or deselects a rationale
-        check box.
+        Updates the topics displayed in Topic View.
         '''
-        worker = Thread(target=self._update_rationale_display)
-        worker.start()    
+        self._topic_list.clear()
+        self._topic_list.addItems(topics)
+        self._topic_list.sortItems()   
         
+    def update_document_list(self, documents):
+        '''
+        Updates the documents displayed in Document View.
+        '''
+        self._document_list.clear()
+        self._document_list.addItems(documents)
+        self._document_list.sortItems() 
+
     def _update_rationale_display(self):
         '''
         Recomputes rationale overlap and updates display. Expensive.
@@ -184,42 +208,45 @@ class CWR(QtGui.QWidget):
             this_rationale.display.setEnabled(True)
 
         print ("Finished updating rationale display.")
-    
-    def update_topic_list(self, topics):
-        '''
-        Updates the topics displayed in Topic View.
-        '''
-        self._topic_list.clear()
-        self._topic_list.addItems(topics)
-        self._topic_list.sortItems()   
-        
-    def update_document_list(self, documents):
-        '''
-        Updates the documents displayed in Document View.
-        '''
-        self._document_list.clear()
-        self._document_list.addItems(documents)
-        self._document_list.sortItems() 
-        
-    def topic_selected(self, item):
-        '''
-        Handler function called when a user selects a topic in the
-        Topic View.
-        '''
-        print (item.text())
-        
-    def document_selected(self, item):
-        '''
-        Handler function called when a user select a doicment in the
-        Document View.
-        '''
-        print (item.text())
         
     def update_rationale_text(self, text):
         self._rationale_display.set_text(text)
     
     def highlight_rationale(self, text):
         self._rationale_display.highlight(text)
+
+#########################################################################################
+# Signals                                                                               #
+#########################################################################################
+
+    def _topic_selected(self, item):
+        '''
+        Handler function - user selects a topic in the Topic View.
+        
+        Refreshes the list of documents in the Document View with 
+        all documents for which a worker judgment has been loaded
+        for that topic. Computes statistics across that topic.
+        '''
+        documents = self._dm.judged_documents_by_topic(item)
+        update_document_list(documents)
+
+    def _document_selected(self, item):
+        '''
+        Handler function - user select a document in the Document View.
+        
+        Loads the text from that document into the rationale display
+        and computes statistics for that document.
+        '''
+        print (item.text())
+
+    def _rationale_selection_changed(self, state):
+        '''
+        Handler function called when a user selects or deselects a rationale
+        check box.
+        '''
+        worker = Thread(target=self._update_rationale_display)
+        worker.start()
+    
     
 class Rationale(object):
     '''
@@ -231,7 +258,6 @@ class Rationale(object):
         self.label = label
         self.text  = rationale
 
-    @staticmethod
     def compute_overlap(text, rationales):
         '''
         Stores the key-string tuple and, for every tuple stored, computes the 
