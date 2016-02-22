@@ -1,3 +1,3 @@
 [submodule "testcollection"]
 	path = testcollection
-	url = https://github.com/tylermcdonnell/cwr.git
+	url = https://github.com/tylermcdonnell/ir_utility.git

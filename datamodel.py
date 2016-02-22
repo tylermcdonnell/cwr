@@ -1,4 +1,4 @@
-from MQT import MQTTopic, MQTDocument, MQTRelevanceJudgment, MQT
+from testcollection.MQT import MQTTopic, MQTDocument, MQTRelevanceJudgment, MQT
 from sets import Set
 
 class DataModel(object):
