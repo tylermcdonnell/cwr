@@ -14,11 +14,11 @@ from PyQt4 import QtGui
 from PyQt4 import QtWebKit
 from PyQt4.Qt import QUrl, QCheckBox
 
+from testcollection.mqt import MQTTopic, MQTDocument, MQTRelevanceJudgment, MQT
+
 class CWR(QtGui.QWidget):
     
     def __init__(self):
-        super(CWR, self).__init__()
-
         self._dm = DataModel()              # Primary data model.
 
         self._topics    = []                # All topics for which judgments have been loaded.
@@ -31,6 +31,10 @@ class CWR(QtGui.QWidget):
 
         self._display_text = None           # Text of document being manipulated.
 
+        super(CWR, self).__init__()
+
+        self.init_UI()
+
         # For testing WebView.
         ''' 
         test_url = 'https://en.wikipedia.org/wiki/The_Beatles'
@@ -40,12 +44,17 @@ class CWR(QtGui.QWidget):
         self._display_text = test_text
         '''
         
-        self.init_UI()
-        
     def init_UI(self):        
         grid = QtGui.QGridLayout()
         grid.setSpacing(10)
             
+        #####################################
+        # Summary of UI Elements            #
+        #####################################
+        # These are UI elements that are updated after creation.
+        self._confusion_matrix = None       # String form of confusion matrix for current view.
+
+
         #####################################
         # Topic View                        #
         #####################################
@@ -58,7 +67,7 @@ class CWR(QtGui.QWidget):
         # Topic List
         self._topic_list = QtGui.QListWidget()
         self._topic_list.setSizePolicy(QtGui.QSizePolicy.Minimum, QtGui.QSizePolicy.Minimum)
-        self._topic_list.itemClicked.connect(self.topic_selected)
+        self._topic_list.itemClicked.connect(self._topic_selected)
         topic_layout.addWidget(self._topic_list)
         
         #####################################
@@ -84,33 +93,35 @@ class CWR(QtGui.QWidget):
         grid.addLayout(rationale_view, 0, 2)
         
         # Rationale Display
+        '''
         web = HighlightWebView()
         web.setSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Expanding)
         web.load(QUrl('https://en.wikipedia.org/wiki/The_Beatles'))
         web.show()
-        self._rationale_display = web
-        #self._rationale_display = HighlightBox()
+        '''
+        display = HighlightBox()
+        display.set_text('')
+        self._rationale_display = display
         rationale_view.addWidget(self._rationale_display, 2, 0)
-        #self._rationale_display.set_text(test_text)
         
         # Rationale Selection
         selection_view = QtGui.QGroupBox("Selection")
         self._selection_layout = QtGui.QHBoxLayout()
         selection_view.setLayout(self._selection_layout)
         rationale_view.addWidget(selection_view, 1, 0)
-        rationales = []
-        for label, rationale in test_rationales.items():
-            rationales.append(Rationale(label, rationale))
-        self.load_rationales(rationales)
         
         # Statistics View
         self._stat_display = QtGui.QGroupBox("Statistics")
         stat_layout = QtGui.QVBoxLayout()
-        stat_label1 = QtGui.QLabel()
-        stat_label1.setText("Here is where statistics will be displayed.")
-        stat_layout.addWidget(stat_label1)
+        confusion_matrix_label = QtGui.QLabel()
+        confusion_matrix       = QtGui.QMessageBox()
+        confusion_matrix_label.setText('Confusion Matrix')
+        stat_layout.addWidget(confusion_matrix_label)
+        stat_layout.addWidget(confusion_matrix)
         self._stat_display.setLayout(stat_layout)
         rationale_view.addWidget(self._stat_display, 3, 0)
+        # Give pointers to updateable elements.
+        self._confusion_matrix = confusion_matrix
         
         #####################################
         # Main Application Properties       #
@@ -119,8 +130,17 @@ class CWR(QtGui.QWidget):
         self.setGeometry(300, 300, 1000, 1000)
         self.setWindowTitle("The Crowdworker's Rationale")
         self.show()
+        
+    def load(self, filename):
+        '''
+        Loads rationale data from the specified file.
+        '''
+        dm = self._dm
+        dm.load(filename)
+        self.update_topic_list(dm.judged_topics())
+        self.update_document_list([])
 
-    def _load_rationales(self, rationales):
+    def load_rationales(self, rationales):
         '''
         Regenerates data structures and display logic for rationale selection.
         '''
@@ -155,8 +175,9 @@ class CWR(QtGui.QWidget):
         '''
         Updates the topics displayed in Topic View.
         '''
+        self._topics = topics
         self._topic_list.clear()
-        self._topic_list.addItems(topics)
+        self._topic_list.addItems([t.id for t in topics])
         self._topic_list.sortItems()   
         
     def update_document_list(self, documents):
@@ -167,7 +188,7 @@ class CWR(QtGui.QWidget):
         self._document_list.addItems(documents)
         self._document_list.sortItems() 
 
-    def _update_rationale_display(self):
+    def update_rationale_display(self):
         '''
         Recomputes rationale overlap and updates display. Expensive.
         '''
@@ -208,6 +229,15 @@ class CWR(QtGui.QWidget):
             this_rationale.display.setEnabled(True)
 
         print ("Finished updating rationale display.")
+
+    def update_statistics(self):
+        self.update_confusion_matrix();
+
+    def update_confusion_matrix(self):
+        selected_topic    = self._selected_topic
+        selected_document = self._selected_document
+        cm = self._dm.confusion_matrix(selected_topic, selected_document)
+        self._confusion_matrix.setText(cm)
         
     def update_rationale_text(self, text):
         self._rationale_display.set_text(text)
@@ -227,8 +257,17 @@ class CWR(QtGui.QWidget):
         all documents for which a worker judgment has been loaded
         for that topic. Computes statistics across that topic.
         '''
-        documents = self._dm.judged_documents_by_topic(item)
-        update_document_list(documents)
+        topic_id = item.text()
+
+        # Update control selection.
+        self._selected_topic = topic_id
+
+        # Update statistics view.
+        self.update_statistics()
+
+        print ("Loading documents for topic %s" % topic_id)
+        documents = self._dm.judged_documents_by_topic(topic_id)
+        self.update_document_list([d.id for d in documents])
 
     def _document_selected(self, item):
         '''
@@ -237,14 +276,30 @@ class CWR(QtGui.QWidget):
         Loads the text from that document into the rationale display
         and computes statistics for that document.
         '''
-        print (item.text())
+        document_id       = item.text()
+        
+        # Update control selection.
+        self._selected_document = document_id
+        
+        # Update statistics view.
+        self.update_statistics()
 
+        # Grab control selections.
+        selected_topic    = self._selected_topic
+        selected_document = self._selected_document
+
+        print ("Loading rationales for document %s, topic %s" % (selected_document, selected_topic))
+        rationales = self._dm.judgments(selected_topic, selected_document)
+        print (rationales)
+        rationales = [Rationale('X', r) for r in rationales]
+        self.load_rationales(rationales)
+        
     def _rationale_selection_changed(self, state):
         '''
         Handler function called when a user selects or deselects a rationale
         check box.
         '''
-        worker = Thread(target=self._update_rationale_display)
+        worker = Thread(target=self.update_rationale_display)
         worker.start()
     
     
@@ -296,7 +351,7 @@ class Rationale(object):
                 overlap.append(string1[start : start + length])
                 
         return result(matches = matches, overlap = overlap)
-                 
+
 
 
         
@@ -308,8 +363,9 @@ if __name__ == "__main__":
     #t.show()
     
     window = CWR()
-    window.update_topic_list(["978", "1067", "1065"])
-    window.update_document_list(["https://en.wikipedia.org/wiki/Taylor_Swift", "https://en.wikipedia.org/wiki/The_Beatles"])
+    window.load('small8_rationales.csv')
+#    window.update_topic_list(["978", "1067", "1065"])
+#    window.update_document_list(["https://en.wikipedia.org/wiki/Taylor_Swift", "https://en.wikipedia.org/wiki/The_Beatles"])
     
     '''
     web = QtWebKit.QWebView()
