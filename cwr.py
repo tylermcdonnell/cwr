@@ -1,5 +1,6 @@
 import itertools
 import requests
+import random
 
 from datamodel import DataModel
 
@@ -12,6 +13,7 @@ from highlightinterface import HighlightWebView, HighlightBox
 
 from PyQt4 import QtGui
 from PyQt4 import QtWebKit
+from PyQt4 import QtCore
 from PyQt4.Qt import QUrl, QCheckBox
 
 from testcollection.mqt import MQTTopic, MQTDocument, MQTRelevanceJudgment, MQT
@@ -93,14 +95,10 @@ class CWR(QtGui.QWidget):
         grid.addLayout(rationale_view, 0, 2)
         
         # Rationale Display
-        '''
-        web = HighlightWebView()
-        web.setSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Expanding)
-        web.load(QUrl('https://en.wikipedia.org/wiki/The_Beatles'))
-        web.show()
-        '''
-        display = HighlightBox()
-        display.set_text('')
+        display = HighlightWebView()
+        display.setSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Expanding)
+        display.load(QUrl('https://en.wikipedia.org/wiki/The_Beatles'))
+        display.show()
         self._rationale_display = display
         rationale_view.addWidget(self._rationale_display, 2, 0)
         
@@ -140,33 +138,6 @@ class CWR(QtGui.QWidget):
         self.update_topic_list(dm.judged_topics())
         self.update_document_list([])
 
-    def load_rationales(self, rationales):
-        '''
-        Regenerates data structures and display logic for rationale selection.
-        '''
-        # Compact holder for all rationale logic.
-        container = namedtuple('RationaleContainer', ['rationale', 'color', 'display'])
-
-        # Friendly display colors used to highlight rationales in source texts.
-        colors = [QtGui.QColor(102, 255, 102), # Light Green
-                  QtGui.QColor(255, 102, 102), # Light Red 
-                  QtGui.QColor(102, 201, 255), # Electric Blue
-                  QtGui.QColor(102, 178, 255), # Baby Blue
-                  QtGui.QColor(178, 102, 255), # Light Purple
-                  QtGui.QColor(255, 205, 255), # Light Magenta
-                  QtGui.QColor(255, 102, 178), # Light Pink
-                  QtGui.QColor(192, 192, 192)] # Light Grey
-
-        # Re-generate rationale data structures.
-        self._rationales = []
-        for i in range(len(rationales)):
-            r = rationales[i]
-            c = colors[min(i, len(colors) - 1)]
-            d = QCheckBox(r.label)
-            d.stateChanged.connect(self._rationale_selection_changed)
-            self._rationales.append(container(rationale = r, color = c, display = d))
-            self._selection_layout.addWidget(d)
-
 #########################################################################################
 # Updateable UI Elements                                                                #
 #########################################################################################
@@ -188,6 +159,38 @@ class CWR(QtGui.QWidget):
         self._document_list.addItems(documents)
         self._document_list.sortItems() 
 
+    def update_rationale_selection(self, rationales):
+        '''
+        Regenerates data structures and display logic for rationale selection.
+        '''
+        # Compact holder for all rationale logic.
+        container = namedtuple('RationaleContainer', ['rationale', 'color', 'display'])
+
+        # Friendly display colors used to highlight rationales in source texts.
+        colors = [QtGui.QColor(102, 255, 102), # Light Green
+                  QtGui.QColor(255, 102, 102), # Light Red 
+                  QtGui.QColor(102, 201, 255), # Electric Blue
+                  QtGui.QColor(102, 178, 255), # Baby Blue
+                  QtGui.QColor(178, 102, 255), # Light Purple
+                  QtGui.QColor(255, 205, 255), # Light Magenta
+                  QtGui.QColor(255, 102, 178), # Light Pink
+                  QtGui.QColor(192, 192, 192)] # Light Grey
+
+        # Remove old rationale widgets.
+        layout = self._selection_layout
+        for i in reversed(range(layout.count())): 
+            layout.itemAt(i).widget().setParent(None)
+
+        # Re-generate rationale data structures.
+        self._rationales = []
+        for i in range(len(rationales)):
+            r = rationales[i]
+            c = colors[min(i, len(colors) - 1)]
+            d = QCheckBox(r.label)
+            d.stateChanged.connect(self._rationale_selection_changed)
+            self._rationales.append(container(rationale = r, color = c, display = d))
+            self._selection_layout.addWidget(d)
+
     def update_rationale_display(self):
         '''
         Recomputes rationale overlap and updates display. Expensive.
@@ -203,14 +206,33 @@ class CWR(QtGui.QWidget):
         for this_rationale in self._rationales:
             if this_rationale.display.isChecked():
                 selected.extend([r for r in self._rationales if this_rationale.display.text() == r.rationale.label])
-                
+        print (selected)
+
+        # Gather text.
+        text = self._rationale_display.get_text()
+
         # Compute overlap.
         just_rationales = [r.rationale for r in selected]
-        result = Rationale.compute_overlap(self._text, just_rationales)
+        result = Rationale.compute_overlap(text, just_rationales)
 
         # Update display with rationale matches.
         display = self._rationale_display
         display.clear()
+        
+        # If more than one rationale is selected, highlight overlap.
+        if result.overlap:
+            for string in result.overlap:
+                print ("Highlighted string: %s" % string)
+                display.highlight(string)
+        # Else, highlight single rationale
+        elif result.matches:
+            strings = [QtCore.QString(s) for s in itertools.chain(*[s for s in result.matches.values()])]
+            for string in strings:
+                print ("Highlighting string: %s" % string)
+                display.highlight(string)
+            
+        # This is code exclusively for a multi-color highlight interface.
+        '''
         for rationale, matches in result.matches.items():
             # Map back to container to find correct color.
             color = [c.color for c in selected if c.rationale is rationale][0]
@@ -218,11 +240,11 @@ class CWR(QtGui.QWidget):
             # Highlight in display.
             for match in matches:
                 display.highlight(match, color)
-            
-        # Update display with overlap between rationales.
+
         overlap_color = QtGui.QColor(255, 255, 102) # Light Yellow
         for string in result.overlap:
             display.highlight(string, overlap_color)
+        '''
 
         # Re-enable rationale selection.
         for this_rationale in self._rationales:
@@ -230,13 +252,11 @@ class CWR(QtGui.QWidget):
 
         print ("Finished updating rationale display.")
 
-    def update_statistics(self):
-        self.update_confusion_matrix();
+    def update_statistics(self, topic=None, document=None):
+        self.update_confusion_matrix(topic, document);
 
-    def update_confusion_matrix(self):
-        selected_topic    = self._selected_topic
-        selected_document = self._selected_document
-        cm = self._dm.confusion_matrix(selected_topic, selected_document)
+    def update_confusion_matrix(self, topic=None, document=None):
+        cm = self._dm.confusion_matrix(topic, document)
         self._confusion_matrix.setText(cm)
         
     def update_rationale_text(self, text):
@@ -244,6 +264,10 @@ class CWR(QtGui.QWidget):
     
     def highlight_rationale(self, text):
         self._rationale_display.highlight(text)
+
+    def load_document(self, url):
+        self._rationale_display.load(QUrl(url))
+        
 
 #########################################################################################
 # Signals                                                                               #
@@ -263,7 +287,7 @@ class CWR(QtGui.QWidget):
         self._selected_topic = topic_id
 
         # Update statistics view.
-        self.update_statistics()
+        self.update_statistics(topic=topic_id)
 
         print ("Loading documents for topic %s" % topic_id)
         documents = self._dm.judged_documents_by_topic(topic_id)
@@ -280,19 +304,22 @@ class CWR(QtGui.QWidget):
         
         # Update control selection.
         self._selected_document = document_id
-        
-        # Update statistics view.
-        self.update_statistics()
 
         # Grab control selections.
         selected_topic    = self._selected_topic
         selected_document = self._selected_document
 
+        # Update statistics view.
+        self.update_statistics(selected_topic, selected_document)
+
         print ("Loading rationales for document %s, topic %s" % (selected_document, selected_topic))
         rationales = self._dm.judgments(selected_topic, selected_document)
-        print (rationales)
-        rationales = [Rationale('X', r) for r in rationales]
-        self.load_rationales(rationales)
+        rationales = [Rationale(str(random.randint(1,10000)), r) for r in rationales]
+        self.update_rationale_selection(rationales)
+
+        # Load document.
+        document = next((d for d in self._dm.judged_documents() if d.id == selected_document), None)
+        self.load_document(document.url)
         
     def _rationale_selection_changed(self, state):
         '''
@@ -310,9 +337,10 @@ class Rationale(object):
     '''
 
     def __init__(self, label, rationale):
-        self.label = label
-        self.text  = rationale
+        self.label      = label
+        self.rationale  = rationale 
 
+    @staticmethod
     def compute_overlap(text, rationales):
         '''
         Stores the key-string tuple and, for every tuple stored, computes the 
@@ -330,25 +358,30 @@ class Rationale(object):
                    mapped to a rationale are substrings found in the text.
         overlap -- List of strings that are common to two or more rationales.
         '''
+        minimum_match_length = 5
         result = namedtuple('RationaleComputation', ['matches', 'overlap'])
         
         # Compute matches
         matches  = defaultdict(list)
         for rationale in rationales:
-            for match in SequenceMatcher(None, text, rationale.text).get_matching_blocks():
+            # Yes, this is stupid naming by me.
+            rationale_text = rationale.rationale.rationale
+            for match in SequenceMatcher(None, text, rationale_text).get_matching_blocks():
                 start  = match[0]
                 length = match[2]
-                matches[rationale].append(text[start : start + length])
-                
+                if length > minimum_match_length:
+                    matches[rationale].append(text[start : start + length])
+     
         # Compute overlap in rationales.
         overlap = []
         for pair in itertools.combinations(rationales, 2):
-            string1 = pair[0].text
-            string2 = pair[1].text
+            string1 = pair[0].rationale.rationale
+            string2 = pair[1].rationale.rationale
             for match in SequenceMatcher(None, string1, string2).get_matching_blocks():
                 start  = match[0]
                 length = match[2]
-                overlap.append(string1[start : start + length])
+                if length > minimum_match_length:
+                    overlap.append(string1[start : start + length])
                 
         return result(matches = matches, overlap = overlap)
 

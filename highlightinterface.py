@@ -7,7 +7,7 @@ from PyQt4.Qt import QUrl, QCheckBox
 class HighlightInterface(object):
     
     @abstractmethod
-    def highlight(self, string, color):
+    def highlight(self, string, color=None):
         '''
         '''
         pass
@@ -39,17 +39,24 @@ class HighlightWebView(QtWebKit.QWebView, HighlightInterface):
         Loads the specified URL and stores its text for computations.
         '''
         super(HighlightWebView, self).load(URL)
-        print (self.page().mainFrame().toHtml())
+        #print (self.page().mainFrame().toHtml())
 
-    def highlight(self, string, color):
+    def get_text(self):
+        return self.page().mainFrame().toHtml().toUtf8()
+
+    def highlight(self, string, color=None):
         '''
+        Highlight all occurrences of specified string.
         '''
-        pass
+        print ("Highlighting")
+        return self.findText(string, QtWebKit.QWebPage.HighlightAllOccurrences)
 
     def clear(self):
         '''
+        Clears highlights.
         '''
-        pass
+        print ("Clearing highlights.")
+        return self.findText('', QtWebKit.QWebPage.HighlightAllOccurrences)
     
 class HighlightBox(QtGui.QTextEdit, HighlightInterface):
     '''
