@@ -73,6 +73,7 @@ class CWR(QtGui.QWidget):
         self._topic_list.itemClicked.connect(self._topic_selected)
         topic_layout.addWidget(self._topic_list)
         
+
         #####################################
         # Document View                     #
         #####################################
@@ -84,10 +85,49 @@ class CWR(QtGui.QWidget):
 
         # Document List
         self._document_list = QtGui.QListWidget()
-        self._document_list.setSizePolicy(QtGui.QSizePolicy.Minimum, QtGui.QSizePolicy.Minimum)
+        self._document_list.setSizePolicy(QtGui.QSizePolicy.Minimum, QtGui.QSizePolicy.Expanding)
         self._document_list.itemClicked.connect(self._document_selected)
         document_layout.addWidget(self._document_list)
-        
+
+
+        #####################################
+        # Statistics View                   #
+        #####################################
+        # Below rationale view. Contains the confusion matrix, list of
+        # rationales, gold standard values, and user judgments.
+        stat_label = QtGui.QLabel()
+        stat_label.setText("<B>Statistics</B>")
+        #stat_layout        = QtGui.QVBoxLayout()
+        document_layout.addWidget(stat_label)
+        #self._stat_display.setLayout(stat_layout)
+        #self._stat_display.setSizePolicy(QtGui.QSizePolicy.Minimum, QtGui.QSizePolicy.Minimum)
+
+        # Confusion Matrix for current Topic or Topic-Document Pair
+        confusion_matrix_label = QtGui.QLabel()
+        confusion_matrix_label.setText("Confusion Matrix")
+        document_layout.addWidget(confusion_matrix_label)
+        confusion_matrix       = QtGui.QLabel()
+        confusion_matrix.setText("  -    -    -    -   \n"
+                                 "  -    -    -    -   \n"
+                                 "  -    -    -    -   \n")
+        document_layout.addWidget(confusion_matrix)
+
+        # Gold Standard for current Topic-Document.
+        gold_standard_view = QtGui.QLabel()
+        gold_standard_view.setText("Gold Standard: N/A")
+        document_layout.addWidget(gold_standard_view)
+
+        # Degree 1 Agreement
+        d1_agreement_view = QtGui.QLabel()
+        d1_agreement_view.setText("D1 Agreement: N/A")
+        document_layout.addWidget(d1_agreement_view)
+
+        # Give pointers to updateable elements.
+        self._confusion_matrix   = confusion_matrix
+        self._gold_standard_view = gold_standard_view
+        self._d1_agreement_view  = d1_agreement_view
+
+   
         #####################################
         # Rationale View                    #
         #####################################
@@ -109,53 +149,39 @@ class CWR(QtGui.QWidget):
         selection_view.setLayout(self._selection_layout)
         rationale_view.addWidget(selection_view, 1, 0)
 
+
         #####################################
-        # Statistics View                   #
+        # Worker View                       #
         #####################################
-        # Below rationale view. Contains the confusion matrix, list of
-        # rationales, gold standard values, and user judgments.
-        self._stat_display = QtGui.QGroupBox("Statistics")
-        stat_layout        = QtGui.QVBoxLayout()
-        grid.addWidget(self._stat_display, 0, 3)
-        self._stat_display.setLayout(stat_layout)
-        
-        # Confusion Matrix for current Topic or Topic-Document Pair
-        confusion_matrix_label = QtGui.QLabel()
-        confusion_matrix_label.setText("Confusion Matrix")
-        stat_layout.addWidget(confusion_matrix_label)
-        confusion_matrix       = QtGui.QLabel()
-        confusion_matrix.setText("  -    -    -    -   \n"
-                                 "  -    -    -    -   \n"
-                                 "  -    -    -    -   \n")
-        stat_layout.addWidget(confusion_matrix)
-        
-        # Gold Standard for current Topic-Document.
-        gold_standard_view = QtGui.QLabel()
-        gold_standard_view.setText("Gold Standard: N/A")
-        stat_layout.addWidget(gold_standard_view)
+        # Below rationale view. Contains pure text of worker rationales,
+        # judgments, and the gold standard.
+        self._worker_display = QtGui.QGroupBox("Workers")
+        worker_layout        = QtGui.QVBoxLayout()
+        grid.addLayout(worker_layout, 0, 3)
+        #self._worker_display.setLayout(worker_layout)
+
 
         # Worker Rationales for current Topic-Document.
         worker_rationale_list_label = QtGui.QLabel()
         worker_rationale_list_label.setText("Worker Rationales")
-        stat_layout.addWidget(worker_rationale_list_label)
+        worker_layout.addWidget(worker_rationale_list_label)
         worker_rationale_list = QtGui.QTextEdit()
         worker_rationale_list.setText("Initial Text.")
-        stat_layout.addWidget(worker_rationale_list)
+        worker_layout.addWidget(worker_rationale_list)
 
         # Worker Judgments for current Topic-Document.
         worker_judgment_list_label = QtGui.QLabel()
         worker_judgment_list_label.setText("Worker Judgments")
-        stat_layout.addWidget(worker_judgment_list_label)
+        worker_layout.addWidget(worker_judgment_list_label)
         worker_judgment_list = QtGui.QTextEdit()
         worker_judgment_list.setText("Initial Text.")
-        stat_layout.addWidget(worker_judgment_list)
+        worker_layout.addWidget(worker_judgment_list)
 
         # Give pointers to updateable elements.
-        self._confusion_matrix   = confusion_matrix
-        self._gold_standard_view = gold_standard_view
         self._worker_judgments   = worker_judgment_list
         self._worker_rationales  = worker_rationale_list
         
+
         #####################################
         # Main Application Properties       #
         #####################################
@@ -258,12 +284,8 @@ class CWR(QtGui.QWidget):
         display = self._rationale_display
         display.clear()
         
-        # Experimental
-        for r in just_rationales:
-            display.highlight(r.rationale.rationale[:20])
-        
-        '''
         # If more than one rationale is selected, highlight overlap.
+        '''
         if result.overlap:
             for string in result.overlap:
                 print ("Highlighted string: %s" % string)
@@ -275,6 +297,9 @@ class CWR(QtGui.QWidget):
                 print ("Highlighting string: %s" % string)
                 display.highlight(string)
         '''
+
+        for r in just_rationales:
+            display.highlight(r.rationale.rationale)
             
         # This is code exclusively for a multi-color highlight interface.
         '''
@@ -299,7 +324,8 @@ class CWR(QtGui.QWidget):
         self.update_gold_standard_view(topic, document)
         self.update_rationale_list()
         self.update_judgment_list()
-        self.update_confusion_matrix(topic, document);
+        self.update_confusion_matrix(topic, document)
+        self.update_d1_agreement(topic, document)
 
     def update_confusion_matrix(self, topic=None, document=None):
         cm = self._dm.confusion_matrix(topic, document)
@@ -313,10 +339,19 @@ class CWR(QtGui.QWidget):
             value = self._dm.gold_standard(topic, document)
             self._gold_standard_view.setText("Gold Standard: %s" % value)
 
+    def update_d1_agreement(self, topic, document):
+        '''
+        Computes and updates the agreement for currently selected Topic or Document.
+        '''
+        agreement = self._dm.agreement(topic, document)
+        self._d1_agreement_view.setText("D1 Agreement: %f" % agreement)
+
     def update_rationale_list(self):
         '''
-        Updates the text view of worker rationales.
-        Note: This requires that the worker selection boxes are up-to-date.
+        Updates the worker rationale list. If one or more worker IDs is 
+        selected, this will display only the rationales by the selected 
+        workers. Otherwise, this will display all rationales for the 
+        selected Topic and Document.
         '''
         display_text = ''
         selected = [r for r in self._rationales if r.display.isChecked()]
@@ -328,18 +363,22 @@ class CWR(QtGui.QWidget):
 
     def update_judgment_list(self, topic=None, document=None):
         '''
-        Updates the text view of worker judgments.
-        Note: This requires that the worker selection boxes are up-to-date.
+        Updates the worker judgment list. If one or more worker IDs is
+        selected, this will display only the judgments of those selected
+        workers. Otherwise, this will display the judgments from all workers.
         '''
         display_text = ''
         selected = [r for r in self._rationales if r.display.isChecked()]
         # If none are selected, display all.
         selected = selected if selected else self._rationales
         for r in selected:
-            display_text += ('%s: %s\n\n' % (r.rationale.label, r.rationale.rationale.value))
+            display_text += ('%s: %s\n' % (r.rationale.label, r.rationale.rationale.value))
         self._worker_judgments.setText(display_text)
         
     def update_rationale_text(self, text):
+        '''
+        This updates the text in the rationale display.
+        '''
         self._rationale_display.set_text(text)
     
     def highlight_rationale(self, text):

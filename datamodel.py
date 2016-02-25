@@ -75,6 +75,13 @@ class DataModel(object):
         '''
         gs = self.test_collection.find_gold_standard(topic_id, document_id)
         return gs.value
+        
+    def agreement(self, topic=None, document=None):
+        filtered = self._filtered(topic, document)
+        
+        # Compute.
+        agreement, _ = self.test_collection.compute_agreement(filtered, 1)
+        return agreement
 
     def confusion_matrix(self, topic=None, document=None):
         '''
@@ -84,12 +91,7 @@ class DataModel(object):
         given that an annotator selected r for a document, another 
         selected c for that same document.
         '''
-        # Filter data.
-        filtered = self.judged_data
-        if topic:
-            filtered = [j for j in filtered if j.topic.id == topic]
-        if document:
-            filtered = [j for j in filtered if j.document.id == document]
+        filtered = self._filtered(topic, document)
             
         # Compute.
         cm, _ = self.test_collection.compute_agreement_matrix(filtered)
@@ -103,7 +105,17 @@ class DataModel(object):
             as_string += '\n'
         return as_string
 
-        
+    def _filtered(self, topic=None, document=None):
+        '''
+        From judged data, filters by Topic and Document.
+        '''
+        filtered = self.judged_data
+        if topic:
+            filtered = [j for j in filtered if j.topic.id == topic]
+        if document:
+            filtered = [j for j in filtered if j.document.id == document]
+        return filtered
+            
 
     
     
