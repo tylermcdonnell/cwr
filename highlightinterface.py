@@ -1,8 +1,10 @@
 from abc import abstractmethod
 
+from PyQt4 import QtCore
 from PyQt4 import QtGui
 from PyQt4 import QtWebKit
 from PyQt4.Qt import QUrl, QCheckBox
+
 
 class HighlightInterface(object):
     
@@ -48,7 +50,8 @@ class HighlightWebView(QtWebKit.QWebView, HighlightInterface):
         '''
         Highlight all occurrences of specified string.
         '''
-        print ("Highlighting")
+        string = QtCore.QString(string)
+        print ("Highlighting: %s" % string)
         return self.findText(string, QtWebKit.QWebPage.HighlightAllOccurrences)
 
     def clear(self):

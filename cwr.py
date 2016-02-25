@@ -1,6 +1,7 @@
 import itertools
 import requests
 import random
+import os
 
 from datamodel import DataModel
 
@@ -29,7 +30,7 @@ class CWR(QtGui.QWidget):
 
         self._selected_topic    = None      # Currently selected topic.
         self._selected_document = None      # Currently selected document.
-        self._rationales        = None      # Rationales for the currently selected document.
+        self._rationales        = []        # Rationales for the currently selected document.
 
         self._display_text = None           # Text of document being manipulated.
 
@@ -107,19 +108,53 @@ class CWR(QtGui.QWidget):
         self._selection_layout = QtGui.QHBoxLayout()
         selection_view.setLayout(self._selection_layout)
         rationale_view.addWidget(selection_view, 1, 0)
-        
-        # Statistics View
+
+        #####################################
+        # Statistics View                   #
+        #####################################
+        # Below rationale view. Contains the confusion matrix, list of
+        # rationales, gold standard values, and user judgments.
         self._stat_display = QtGui.QGroupBox("Statistics")
-        stat_layout = QtGui.QVBoxLayout()
-        confusion_matrix_label = QtGui.QLabel()
-        confusion_matrix       = QtGui.QMessageBox()
-        confusion_matrix_label.setText('Confusion Matrix')
-        stat_layout.addWidget(confusion_matrix_label)
-        stat_layout.addWidget(confusion_matrix)
+        stat_layout        = QtGui.QVBoxLayout()
+        grid.addWidget(self._stat_display, 0, 3)
         self._stat_display.setLayout(stat_layout)
-        rationale_view.addWidget(self._stat_display, 3, 0)
+        
+        # Confusion Matrix for current Topic or Topic-Document Pair
+        confusion_matrix_label = QtGui.QLabel()
+        confusion_matrix_label.setText("Confusion Matrix")
+        stat_layout.addWidget(confusion_matrix_label)
+        confusion_matrix       = QtGui.QLabel()
+        confusion_matrix.setText("  -    -    -    -   \n"
+                                 "  -    -    -    -   \n"
+                                 "  -    -    -    -   \n")
+        stat_layout.addWidget(confusion_matrix)
+        
+        # Gold Standard for current Topic-Document.
+        gold_standard_view = QtGui.QLabel()
+        gold_standard_view.setText("Gold Standard: N/A")
+        stat_layout.addWidget(gold_standard_view)
+
+        # Worker Rationales for current Topic-Document.
+        worker_rationale_list_label = QtGui.QLabel()
+        worker_rationale_list_label.setText("Worker Rationales")
+        stat_layout.addWidget(worker_rationale_list_label)
+        worker_rationale_list = QtGui.QTextEdit()
+        worker_rationale_list.setText("Initial Text.")
+        stat_layout.addWidget(worker_rationale_list)
+
+        # Worker Judgments for current Topic-Document.
+        worker_judgment_list_label = QtGui.QLabel()
+        worker_judgment_list_label.setText("Worker Judgments")
+        stat_layout.addWidget(worker_judgment_list_label)
+        worker_judgment_list = QtGui.QTextEdit()
+        worker_judgment_list.setText("Initial Text.")
+        stat_layout.addWidget(worker_judgment_list)
+
         # Give pointers to updateable elements.
-        self._confusion_matrix = confusion_matrix
+        self._confusion_matrix   = confusion_matrix
+        self._gold_standard_view = gold_standard_view
+        self._worker_judgments   = worker_judgment_list
+        self._worker_rationales  = worker_rationale_list
         
         #####################################
         # Main Application Properties       #
@@ -129,12 +164,16 @@ class CWR(QtGui.QWidget):
         self.setWindowTitle("The Crowdworker's Rationale")
         self.show()
         
-    def load(self, filename):
+    def load(self, directory):
         '''
         Loads rationale data from the specified file.
         '''
         dm = self._dm
-        dm.load(filename)
+        for dirpath, _, filenames in os.walk(directory):
+            for f in filenames:
+                if f.endswith(".csv"): 
+                    absolute_path = os.path.abspath(os.path.join(dirpath, f))
+                    dm.load(absolute_path)
         self.update_topic_list(dm.judged_topics())
         self.update_document_list([])
 
@@ -219,6 +258,11 @@ class CWR(QtGui.QWidget):
         display = self._rationale_display
         display.clear()
         
+        # Experimental
+        for r in just_rationales:
+            display.highlight(r.rationale.rationale[:20])
+        
+        '''
         # If more than one rationale is selected, highlight overlap.
         if result.overlap:
             for string in result.overlap:
@@ -230,6 +274,7 @@ class CWR(QtGui.QWidget):
             for string in strings:
                 print ("Highlighting string: %s" % string)
                 display.highlight(string)
+        '''
             
         # This is code exclusively for a multi-color highlight interface.
         '''
@@ -250,14 +295,49 @@ class CWR(QtGui.QWidget):
         for this_rationale in self._rationales:
             this_rationale.display.setEnabled(True)
 
-        print ("Finished updating rationale display.")
-
     def update_statistics(self, topic=None, document=None):
+        self.update_gold_standard_view(topic, document)
+        self.update_rationale_list()
+        self.update_judgment_list()
         self.update_confusion_matrix(topic, document);
 
     def update_confusion_matrix(self, topic=None, document=None):
         cm = self._dm.confusion_matrix(topic, document)
         self._confusion_matrix.setText(cm)
+
+    def update_gold_standard_view(self, topic, document):
+        '''
+        Updates the current gold standard view.
+        '''
+        if topic and document:
+            value = self._dm.gold_standard(topic, document)
+            self._gold_standard_view.setText("Gold Standard: %s" % value)
+
+    def update_rationale_list(self):
+        '''
+        Updates the text view of worker rationales.
+        Note: This requires that the worker selection boxes are up-to-date.
+        '''
+        display_text = ''
+        selected = [r for r in self._rationales if r.display.isChecked()]
+        # If none are selected, display all.
+        selected = selected if selected else self._rationales
+        for r in selected:
+            display_text += ('%s\n\n%s\n\n' % (r.rationale.label, r.rationale.rationale.rationale))
+        self._worker_rationales.setText(display_text)
+
+    def update_judgment_list(self, topic=None, document=None):
+        '''
+        Updates the text view of worker judgments.
+        Note: This requires that the worker selection boxes are up-to-date.
+        '''
+        display_text = ''
+        selected = [r for r in self._rationales if r.display.isChecked()]
+        # If none are selected, display all.
+        selected = selected if selected else self._rationales
+        for r in selected:
+            display_text += ('%s: %s\n\n' % (r.rationale.label, r.rationale.rationale.value))
+        self._worker_judgments.setText(display_text)
         
     def update_rationale_text(self, text):
         self._rationale_display.set_text(text)
@@ -287,7 +367,7 @@ class CWR(QtGui.QWidget):
         self._selected_topic = topic_id
 
         # Update statistics view.
-        self.update_statistics(topic=topic_id)
+        self.update_statistics(topic=str(topic_id))
 
         print ("Loading documents for topic %s" % topic_id)
         documents = self._dm.judged_documents_by_topic(topic_id)
@@ -309,13 +389,13 @@ class CWR(QtGui.QWidget):
         selected_topic    = self._selected_topic
         selected_document = self._selected_document
 
-        # Update statistics view.
-        self.update_statistics(selected_topic, selected_document)
-
         print ("Loading rationales for document %s, topic %s" % (selected_document, selected_topic))
         rationales = self._dm.judgments(selected_topic, selected_document)
         rationales = [Rationale(str(random.randint(1,10000)), r) for r in rationales]
         self.update_rationale_selection(rationales)
+
+        # Update statistics view.
+        self.update_statistics(str(selected_topic), str(selected_document))
 
         # Load document.
         document = next((d for d in self._dm.judged_documents() if d.id == selected_document), None)
@@ -396,7 +476,7 @@ if __name__ == "__main__":
     #t.show()
     
     window = CWR()
-    window.load('small8_rationales.csv')
+    window.load('data')
 #    window.update_topic_list(["978", "1067", "1065"])
 #    window.update_document_list(["https://en.wikipedia.org/wiki/Taylor_Swift", "https://en.wikipedia.org/wiki/The_Beatles"])
     

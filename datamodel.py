@@ -69,6 +69,13 @@ class DataModel(object):
         '''
         return self.test_collection.gold_standard()
 
+    def gold_standard(self, topic_id, document_id):
+        '''
+        Returns the gold standard judgment for a Topic-Document pair.
+        '''
+        gs = self.test_collection.find_gold_standard(topic_id, document_id)
+        return gs.value
+
     def confusion_matrix(self, topic=None, document=None):
         '''
         Computes and returns a confusion matrix for the list of judgments.
