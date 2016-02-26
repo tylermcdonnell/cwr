@@ -122,10 +122,16 @@ class CWR(QtGui.QWidget):
         d1_agreement_view.setText("D1 Agreement: N/A")
         document_layout.addWidget(d1_agreement_view)
 
+        # Degree 2 Agreement
+        d2_agreement_view = QtGui.QLabel()
+        d1_agreement_view.setText("D2 Agreement: N/A")
+        document_layout.addWidget(d2_agreement_view)
+
         # Give pointers to updateable elements.
         self._confusion_matrix   = confusion_matrix
         self._gold_standard_view = gold_standard_view
         self._d1_agreement_view  = d1_agreement_view
+        self._d2_agreement_view  = d2_agreement_view
 
    
         #####################################
@@ -325,7 +331,7 @@ class CWR(QtGui.QWidget):
         self.update_rationale_list()
         self.update_judgment_list()
         self.update_confusion_matrix(topic, document)
-        self.update_d1_agreement(topic, document)
+        self.update_agreement_view(topic, document)
 
     def update_confusion_matrix(self, topic=None, document=None):
         cm = self._dm.confusion_matrix(topic, document)
@@ -339,12 +345,15 @@ class CWR(QtGui.QWidget):
             value = self._dm.gold_standard(topic, document)
             self._gold_standard_view.setText("Gold Standard: %s" % value)
 
-    def update_d1_agreement(self, topic, document):
+    def update_agreement_view(self, topic, document):
         '''
         Computes and updates the agreement for currently selected Topic or Document.
         '''
-        agreement = self._dm.agreement(topic, document)
-        self._d1_agreement_view.setText("D1 Agreement: %f" % agreement)
+        d1_agree = self._dm.agreement(1, topic, document)
+        self._d1_agreement_view.setText("D1 Agreement: %f" % d1_agree)
+        d2_agree = self._dm.agreement(2, topic, document)
+        self._d2_agreement_view.setText("D2 Agreement: %f" % d2_agree)
+        
 
     def update_rationale_list(self):
         '''

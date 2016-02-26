@@ -76,11 +76,16 @@ class DataModel(object):
         gs = self.test_collection.find_gold_standard(topic_id, document_id)
         return gs.value
         
-    def agreement(self, topic=None, document=None):
+    def agreement(self, degree, topic=None, document=None):
+        '''
+        Calculates the "degree" of agreement for all loaded judgments. Provides
+        filters for topic and documents. See the test collection module for 
+        more information on this statistic.
+        '''
         filtered = self._filtered(topic, document)
         
         # Compute.
-        agreement, _ = self.test_collection.compute_agreement(filtered, 1)
+        agreement, _ = self.test_collection.compute_agreement(filtered, degree)
         return agreement
 
     def confusion_matrix(self, topic=None, document=None):
@@ -94,7 +99,7 @@ class DataModel(object):
         filtered = self._filtered(topic, document)
             
         # Compute.
-        cm, _ = self.test_collection.compute_agreement_matrix(filtered)
+        cm = self.test_collection.compute_agreement_matrix(filtered)
         return self._confusion_matrix_string(cm)
 
     def _confusion_matrix_string(self, cm):
