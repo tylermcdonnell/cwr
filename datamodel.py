@@ -37,6 +37,18 @@ class DataModel(object):
         '''
         return list(set([j.topic for j in self.judged_data]))        
 
+    def topic_information(self, topic):
+        '''
+        Returns (query, narrative) for a specified topic ID. Returns an
+        empty string if no narrative is found for the topic.
+        '''
+        tc = self.test_collection
+        t = next((t for t in tc.topics() if t.id == topic), None)
+        if t:
+            return (t.query, t.narrative)
+        else:
+            return ("", "")
+
     def all_documents(self):
         '''
         Returns all documents.

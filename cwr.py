@@ -93,14 +93,22 @@ class CWR(QtGui.QWidget):
         #####################################
         # Statistics View                   #
         #####################################
-        # Below rationale view. Contains the confusion matrix, list of
+        # Below document view. Contains the confusion matrix, list of
         # rationales, gold standard values, and user judgments.
-        stat_label = QtGui.QLabel()
-        stat_label.setText("<B>Statistics</B>")
+        #stat_label = QtGui.QLabel()
+        #stat_label.setText("<B>Statistics</B>")
         #stat_layout        = QtGui.QVBoxLayout()
-        document_layout.addWidget(stat_label)
+        #document_layout.addWidget(stat_label)
         #self._stat_display.setLayout(stat_layout)
         #self._stat_display.setSizePolicy(QtGui.QSizePolicy.Minimum, QtGui.QSizePolicy.Minimum)
+
+        # Topic Display
+        topic = QtGui.QLabel("<b>Topic</b>: N/A")
+        document_layout.addWidget(topic)
+        narrative_label = QtGui.QLabel("<b>Narrative</b:")
+        document_layout.addWidget(narrative_label)
+        narrative_view = QtGui.QTextEdit()
+        document_layout.addWidget(narrative_view)
 
         # Confusion Matrix for current Topic or Topic-Document Pair
         confusion_matrix_label = QtGui.QLabel()
@@ -128,6 +136,8 @@ class CWR(QtGui.QWidget):
         document_layout.addWidget(d2_agreement_view)
 
         # Give pointers to updateable elements.
+        self._topic_view = topic
+        self._narrative_view = narrative_view
         self._confusion_matrix   = confusion_matrix
         self._gold_standard_view = gold_standard_view
         self._d1_agreement_view  = d1_agreement_view
@@ -140,7 +150,8 @@ class CWR(QtGui.QWidget):
         # Contains the rationale check boxes, text display, and statistics.
         rationale_view = QtGui.QGridLayout()
         grid.addLayout(rationale_view, 0, 2)
-        
+
+
         # Rationale Display
         display = HighlightWebView()
         display.setSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Expanding)
@@ -150,7 +161,7 @@ class CWR(QtGui.QWidget):
         rationale_view.addWidget(self._rationale_display, 2, 0)
         
         # Rationale Selection
-        selection_view = QtGui.QGroupBox("Selection")
+        selection_view = QtGui.QGroupBox()
         self._selection_layout = QtGui.QHBoxLayout()
         selection_view.setLayout(self._selection_layout)
         rationale_view.addWidget(selection_view, 1, 0)
@@ -328,6 +339,7 @@ class CWR(QtGui.QWidget):
 
     def update_statistics(self, topic=None, document=None):
         self.update_gold_standard_view(topic, document)
+        self.update_topic_view(topic)
         self.update_rationale_list()
         self.update_judgment_list()
         self.update_confusion_matrix(topic, document)
@@ -345,6 +357,14 @@ class CWR(QtGui.QWidget):
             value = self._dm.gold_standard(topic, document)
             self._gold_standard_view.setText("Gold Standard: %s" % value)
 
+    def update_topic_view(self, topic):
+        '''
+        Updates the current topic and rationale display.
+        '''
+        (topic, narrative) = self._dm.topic_information(topic)
+        self._topic_view.setText("<b>Topic</b>: %s" % topic)
+        self._narrative_view.setText("%s" % narrative)
+        
     def update_agreement_view(self, topic, document):
         '''
         Computes and updates the agreement for currently selected Topic or Document.
